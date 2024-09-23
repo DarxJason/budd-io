@@ -15,12 +15,12 @@ const config = {
 
 
 const socket = io(); // Initialize socket connection
-let players = {}; // Store all players
-
 
 export class mainMap extends Phaser.Scene {
     constructor() {
         super("mainMap");
+        this.players = {}; // Store player sprites
+        this.player; // Reference to local player sprite
     }
 
     preload() {
@@ -35,7 +35,6 @@ export class mainMap extends Phaser.Scene {
     }
 
     create() {
-        this.players = {}; 
         const map = this.add.tilemap('maps');
         const tiles = map.addTilesetImage('tileset', 'tiles');
         const groundLayer = map.createLayer('Map', tiles, 0, 0);
@@ -123,194 +122,127 @@ export class mainMap extends Phaser.Scene {
             callbackScope: this,
             loop: true
         });
-
-        // Set up socket connection
-        this.socket = io();
-
-        // Handle current players
-        this.socket.on('currentPlayers', (players) => {
+        socket.on('currentPlayers', (players) => {
             Object.keys(players).forEach(id => {
                 const playerInfo = players[id];
-                const newPlayer = this.add.sprite(playerInfo.x, playerInfo.y, 'player');
-                newPlayer.setScale(0.3);
-                this.players[playerInfo.id] = newPlayer; // Store in players object
+                this.addPlayer(playerInfo);
             });
         });
 
-        // Handle new player joining
-        this.socket.on('newPlayer', (playerInfo) => {
-            const newPlayer = this.add.sprite(playerInfo.x, playerInfo.y, 'player');
-            newPlayer.setScale(0.3);
-            this.players[playerInfo.id] = newPlayer; // Store in players object
+        socket.on('newPlayer', (playerInfo) => {
+            this.addPlayer(playerInfo);
         });
 
-        // Handle player movement
-        this.socket.on('playerMoved', (playerInfo) => {
-            if (this.players[playerInfo.id]) {
-                this.players[playerInfo.id].x = playerInfo.x;
-                this.players[playerInfo.id].y = playerInfo.y;
-            }
+        socket.on('updatePlayers', (players) => {
+            Object.keys(players).forEach(id => {
+                const playerInfo = players[id];
+                this.updatePlayer(playerInfo);
+            });
         });
 
-        // Handle player disconnection
-        this.socket.on('playerDisconnected', (playerId) => {
-            if (this.players[playerId]) {
-                this.players[playerId].destroy(); // Remove the player from the scene
-                delete this.players[playerId]; // Remove from the players object
-            }
-        });
-
-        // Handle player input
-        this.input.on('pointermove', (pointer) => {
-            const dx = pointer.worldX - this.player.x;
-            const dy = pointer.worldY - this.player.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance > 10) {
-                this.player.setVelocity((dx / distance) * 175, (dy / distance) * 175);
-                this.socket.emit('playerMovement', { x: this.player.x, y: this.player.y }); // Send movement to server
-            } else {
-                this.player.setVelocity(0);
-            }
+        socket.on('playerDisconnected', (playerId) => {
+            this.removePlayer(playerId);
         });
     }
 
     update() {
-        Object.keys(this.players).forEach((id) => {
-            if (this.players[id]) {
-        
-        const maxSpeed = 175; // Maximum player speed
-        const minSpeed = 0;  // Minimum speed when very close to the mouse
-        const stopDistance = 10; // Distance within which the player will stop
+        const maxSpeed = 175;
+        const minSpeed = 0;
+        const stopDistance = 10;
     
-        // Control switching
         if (Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.K))) {
-            this.useMouseControl = !this.useMouseControl; // Toggle control scheme
+            this.useMouseControl = !this.useMouseControl;
         }
     
+        const playerData = {
+            id: socket.id,
+            x: this.player.x,
+            y: this.player.y,
+            attacking: false
+        };
+    
+        socket.emit('playerUpdate', playerData);
+    
         if (this.useMouseControl) {
-            // Mouse control
-            const pointer = this.input.activePointer; // Get the active pointer
-            const dx = pointer.worldX - this.player.x; // Use worldX instead of x
-            const dy = pointer.worldY - this.player.y; // Use worldY instead of y
-    
-            // Calculate the angle between player and pointer
+            const pointer = this.input.activePointer;
+            const dx = pointer.worldX - this.player.x;
+            const dy = pointer.worldY - this.player.y;
             const angle = Math.atan2(dy, dx);
-    
-            // Calculate the distance between the player and the mouse
             const distance = Math.sqrt(dx * dx + dy * dy);
-    
-            let speed = maxSpeed; // Default speed is maxSpeed
+            let speed = maxSpeed;
     
             if (distance > stopDistance) {
-                // Reduce speed proportionally as the player gets closer to the mouse
                 if (distance < maxSpeed) {
-                    speed = Math.max(minSpeed, distance); // Speed decreases but stays above minSpeed
+                    speed = Math.max(minSpeed, distance);
                 }
-    
-                const velocityX = (dx / distance) * speed; // Normalize x based on distance
-                const velocityY = (dy / distance) * speed; // Normalize y based on distance
-    
-                // Set the player's velocity (but do not rotate the player)
+                const velocityX = (dx / distance) * speed;
+                const velocityY = (dy / distance) * speed;
                 this.player.setVelocity(velocityX, velocityY);
             } else {
-                // If the player is very close to the mouse, stop moving
                 this.player.setVelocity(0);
             }
     
-            // Rotate only the arrow around the player
-            this.movementArrow.clear(); // Clear the previous arrow
-            this.movementArrow.fillStyle(0x808080); // Arrow color (grey)
-    
-            // Draw arrowhead
-            const arrowheadSize = 20; // Size of the arrowhead
-            const arrowDistanceFromPlayer = 50; // Distance of the arrow from the player
-            const arrowheadX = this.player.x + Math.cos(angle) * arrowDistanceFromPlayer; // Offset a bit ahead of the player
+            this.movementArrow.clear();
+            this.movementArrow.fillStyle(0x808080);
+            const arrowheadSize = 20;
+            const arrowDistanceFromPlayer = 50;
+            const arrowheadX = this.player.x + Math.cos(angle) * arrowDistanceFromPlayer;
             const arrowheadY = this.player.y + Math.sin(angle) * arrowDistanceFromPlayer;
-            
+    
             this.movementArrow.beginPath();
-            this.movementArrow.moveTo(arrowheadX, arrowheadY); // Start at arrow tip
-            this.movementArrow.lineTo(arrowheadX - arrowheadSize * Math.cos(angle - Math.PI / 6), arrowheadY - arrowheadSize * Math.sin(angle - Math.PI / 6)); // Left side of arrowhead
-            this.movementArrow.lineTo(arrowheadX - arrowheadSize * Math.cos(angle + Math.PI / 6), arrowheadY - arrowheadSize * Math.sin(angle + Math.PI / 6)); // Right side of arrowhead
+            this.movementArrow.moveTo(arrowheadX, arrowheadY);
+            this.movementArrow.lineTo(arrowheadX - arrowheadSize * Math.cos(angle - Math.PI / 6), arrowheadY - arrowheadSize * Math.sin(angle - Math.PI / 6));
+            this.movementArrow.lineTo(arrowheadX - arrowheadSize * Math.cos(angle + Math.PI / 6), arrowheadY - arrowheadSize * Math.sin(angle + Math.PI / 6));
             this.movementArrow.closePath();
             this.movementArrow.fillPath();
-
-            socket.emit('playerMovement', { x: this.player.x, y: this.player.y });
         } else {
-            // Keyboard control (WASD)
             this.player.setVelocity(0);
-    
             if (this.keys.w.isDown || this.cursors.up.isDown) {
                 this.player.setVelocityY(-maxSpeed);
             } else if (this.keys.s.isDown || this.cursors.down.isDown) {
                 this.player.setVelocityY(maxSpeed);
             }
-    
             if (this.keys.a.isDown || this.cursors.left.isDown) {
                 this.player.setVelocityX(-maxSpeed);
             } else if (this.keys.d.isDown || this.cursors.right.isDown) {
                 this.player.setVelocityX(maxSpeed);
             }
-    
-            // Clear the movement arrow when using keyboard controls
             this.movementArrow.clear();
-            socket.emit('playerMovement', { x: this.player.x, y: this.player.y });
         }
+    
         this.enemies.getChildren().forEach(enemy => {
             let distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
             let chaseRange = 550;
-        
+    
             if (distance < chaseRange) {
                 this.physics.moveToObject(enemy, this.player, 125);
             } else {
                 enemy.setVelocity(enemy.wanderDirection.x * 50, enemy.wanderDirection.y * 50);
             }
-        
-            // Set the enemy's rotation based on its velocity
+    
             if (enemy.body.velocity.x !== 0 || enemy.body.velocity.y !== 0) {
-                enemy.rotation = Math.atan2(enemy.body.velocity.y, enemy.body.velocity.x) + Math.PI / 2; // Adjust to face upwards
+                enemy.rotation = Math.atan2(enemy.body.velocity.y, enemy.body.velocity.x) + Math.PI / 2;
             }
-        
-            // Update the enemy's health bar
+    
             enemy.healthBar.clear();
             enemy.healthBar.fillStyle(0xff0000, 1);
-            enemy.healthBar.fillRect(enemy.x - 20, enemy.y - 35, 40, 5); // Move the health bar on top
+            enemy.healthBar.fillRect(enemy.x - 20, enemy.y - 35, 40, 5);
             enemy.healthBar.fillStyle(0x00ff00, 1);
             enemy.healthBar.fillRect(enemy.x - 20, enemy.y - 35, 40 * (enemy.currentHp / enemy.maxHp), 5);
-        
-            // Update the rarity text position
             enemy.rarityText.setPosition(enemy.x, enemy.y - 50);
         });
-        
     
-        // Update the HP bar
         this.updateHpBar();
     
-        // Update health and rotate bush enemies
         this.bushes.getChildren().forEach(bush => {
-            // Update bush health bar
             bush.healthBar.clear();
             bush.healthBar.fillStyle(0xff0000, 1);
-            bush.healthBar.fillRect(bush.x - 20, bush.y - 35, 40, 5); // Bush HP bar on top
+            bush.healthBar.fillRect(bush.x - 20, bush.y - 35, 40, 5);
             bush.healthBar.fillStyle(0x00ff00, 1);
             bush.healthBar.fillRect(bush.x - 20, bush.y - 35, 40 * (bush.currentHp / bush.maxHp), 5);
         });
     }
-});
-    }
-    addPlayer(playerInfo) {
-        const player = this.physics.add.sprite(playerInfo.x, playerInfo.y, 'player');
-        player.setScale(0.3);
-        players[playerInfo.id] = player;
-    }
-
-    removePlayer(playerId) {
-        const player = players[playerId];
-        if (player) {
-            player.destroy();
-            delete players[playerId];
-        }
-    }
+    
 
     spawnBush(x, y, rarity) {
         let bush = this.physics.add.sprite(x, y, 'bush');
