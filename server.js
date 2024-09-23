@@ -6,7 +6,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
 
-app.use(express.static('public')); // Serve static files from the 'public' directory
+app.use(express.static('public')); // Serve static Phaser files
 
 let players = {};
 
@@ -18,7 +18,8 @@ io.on('connection', (socket) => {
     players[socket.id] = {
         id: socket.id,
         x: Math.floor(Math.random() * 800), // Random X position
-        y: Math.floor(Math.random() * 600)  // Random Y position
+        y: Math.floor(Math.random() * 600), // Random Y position
+        attacking: false // Initial attacking state
     };
 
     // Send the list of current players to the new player
@@ -27,12 +28,12 @@ io.on('connection', (socket) => {
     // Notify all other players about the new player
     socket.broadcast.emit('newPlayer', players[socket.id]);
 
-    // Handle player movement
-    socket.on('playerMovement', (data) => {
+    // Handle player updates
+    socket.on('playerUpdate', (data) => {
         if (players[socket.id]) {
             players[socket.id].x = data.x;
             players[socket.id].y = data.y;
-            io.emit('playerMoved', players[socket.id]); // Notify all players
+            players[socket.id].attacking = data.attacking; // Update attacking state
         }
     });
 
@@ -44,6 +45,10 @@ io.on('connection', (socket) => {
     });
 });
 
-// Start the server
+// Emit player data to all clients at 60 FPS
+setInterval(() => {
+    io.emit('updatePlayers', players); // Broadcast the current players data to all clients
+}, 1000 / 60); // 60 times a second
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
