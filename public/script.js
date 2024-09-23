@@ -1,3 +1,7 @@
+const socket = io(); // Initialize socket connection
+let players = {}; // Store all players
+
+
 export class mainMap extends Phaser.Scene {
     constructor() {
         super("mainMap");
@@ -102,9 +106,37 @@ export class mainMap extends Phaser.Scene {
             callbackScope: this,
             loop: true
         });
+
+          // Listen for current players from server
+          socket.on('currentPlayers', (currentPlayers) => {
+            players = currentPlayers;
+            // Create other players
+            Object.keys(players).forEach((id) => {
+                this.addPlayer(players[id]);
+            });
+        });
+
+        // Listen for new players
+        socket.on('newPlayer', (playerInfo) => {
+            this.addPlayer(playerInfo);
+        });
+
+        // Listen for player movements
+        socket.on('playerMoved', (playerInfo) => {
+            players[playerInfo.id].x = playerInfo.x;
+            players[playerInfo.y].y = playerInfo.y;
+            // Update player sprite position
+            // Add your logic to update the player sprite on screen here
+        });
+
+        // Listen for player disconnection
+        socket.on('playerDisconnected', (playerId) => {
+            this.removePlayer(playerId);
+        });
     }
 
     update() {
+        
         const maxSpeed = 175; // Maximum player speed
         const minSpeed = 0;  // Minimum speed when very close to the mouse
         const stopDistance = 10; // Distance within which the player will stop
@@ -160,6 +192,8 @@ export class mainMap extends Phaser.Scene {
             this.movementArrow.lineTo(arrowheadX - arrowheadSize * Math.cos(angle + Math.PI / 6), arrowheadY - arrowheadSize * Math.sin(angle + Math.PI / 6)); // Right side of arrowhead
             this.movementArrow.closePath();
             this.movementArrow.fillPath();
+
+            socket.emit('playerMovement', { x: this.player.x, y: this.player.y });
         } else {
             // Keyboard control (WASD)
             this.player.setVelocity(0);
@@ -178,6 +212,7 @@ export class mainMap extends Phaser.Scene {
     
             // Clear the movement arrow when using keyboard controls
             this.movementArrow.clear();
+            socket.emit('playerMovement', { x: this.player.x, y: this.player.y });
         }
         this.enemies.getChildren().forEach(enemy => {
             let distance = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
@@ -219,7 +254,19 @@ export class mainMap extends Phaser.Scene {
             bush.healthBar.fillRect(bush.x - 20, bush.y - 35, 40 * (bush.currentHp / bush.maxHp), 5);
         });
     }
-    
+    addPlayer(playerInfo) {
+        const player = this.physics.add.sprite(playerInfo.x, playerInfo.y, 'player');
+        player.setScale(0.3);
+        players[playerInfo.id] = player;
+    }
+
+    removePlayer(playerId) {
+        const player = players[playerId];
+        if (player) {
+            player.destroy();
+            delete players[playerId];
+        }
+    }
 
     spawnBush(x, y, rarity) {
         let bush = this.physics.add.sprite(x, y, 'bush');
@@ -693,4 +740,3 @@ const config = {
 const game = new Phaser.Game(config);
 
 export default mainMap;
-
