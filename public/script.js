@@ -1,19 +1,3 @@
-const config = {
-    type: Phaser.AUTO,
-    width: window.innerWidth,
-    height: window.innerHeight,
-    pixelArt: true, 
-    scene: mainMap, 
-    physics: {
-        default: 'arcade',
-        arcade: {
-            fps: 60,
-            debug: false
-        }
-    }
-};
-
-
 const socket = io(); // Initialize socket connection
 
 export class mainMap extends Phaser.Scene {
@@ -697,7 +681,20 @@ export class mainMap extends Phaser.Scene {
     chasePlayer(player, enemy) {
     }
 }
-
+const config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    pixelArt: true, 
+    scene: mainMap, 
+    physics: {
+        default: 'arcade',
+        arcade: {
+            fps: 60,
+            debug: false
+        }
+    }
+};
 const game = new Phaser.Game(config);
 
 export default mainMap;
