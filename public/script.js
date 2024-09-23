@@ -1,3 +1,19 @@
+const config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,
+    height: window.innerHeight,
+    pixelArt: true, 
+    scene: mainMap, 
+    physics: {
+        default: 'arcade',
+        arcade: {
+            fps: 60,
+            debug: false
+        }
+    }
+};
+
+
 const socket = io(); // Initialize socket connection
 let players = {}; // Store all players
 
@@ -19,6 +35,7 @@ export class mainMap extends Phaser.Scene {
     }
 
     create() {
+        this.players = {}; 
         const map = this.add.tilemap('maps');
         const tiles = map.addTilesetImage('tileset', 'tiles');
         const groundLayer = map.createLayer('Map', tiles, 0, 0);
@@ -107,35 +124,60 @@ export class mainMap extends Phaser.Scene {
             loop: true
         });
 
-          // Listen for current players from server
-          socket.on('currentPlayers', (currentPlayers) => {
-            players = currentPlayers;
-            // Create other players
-            Object.keys(players).forEach((id) => {
-                this.addPlayer(players[id]);
+        // Set up socket connection
+        this.socket = io();
+
+        // Handle current players
+        this.socket.on('currentPlayers', (players) => {
+            Object.keys(players).forEach(id => {
+                const playerInfo = players[id];
+                const newPlayer = this.add.sprite(playerInfo.x, playerInfo.y, 'player');
+                newPlayer.setScale(0.3);
+                this.players[playerInfo.id] = newPlayer; // Store in players object
             });
         });
 
-        // Listen for new players
-        socket.on('newPlayer', (playerInfo) => {
-            this.addPlayer(playerInfo);
+        // Handle new player joining
+        this.socket.on('newPlayer', (playerInfo) => {
+            const newPlayer = this.add.sprite(playerInfo.x, playerInfo.y, 'player');
+            newPlayer.setScale(0.3);
+            this.players[playerInfo.id] = newPlayer; // Store in players object
         });
 
-        // Listen for player movements
-        socket.on('playerMoved', (playerInfo) => {
-            players[playerInfo.id].x = playerInfo.x;
-            players[playerInfo.y].y = playerInfo.y;
-            // Update player sprite position
-            // Add your logic to update the player sprite on screen here
+        // Handle player movement
+        this.socket.on('playerMoved', (playerInfo) => {
+            if (this.players[playerInfo.id]) {
+                this.players[playerInfo.id].x = playerInfo.x;
+                this.players[playerInfo.id].y = playerInfo.y;
+            }
         });
 
-        // Listen for player disconnection
-        socket.on('playerDisconnected', (playerId) => {
-            this.removePlayer(playerId);
+        // Handle player disconnection
+        this.socket.on('playerDisconnected', (playerId) => {
+            if (this.players[playerId]) {
+                this.players[playerId].destroy(); // Remove the player from the scene
+                delete this.players[playerId]; // Remove from the players object
+            }
+        });
+
+        // Handle player input
+        this.input.on('pointermove', (pointer) => {
+            const dx = pointer.worldX - this.player.x;
+            const dy = pointer.worldY - this.player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > 10) {
+                this.player.setVelocity((dx / distance) * 175, (dy / distance) * 175);
+                this.socket.emit('playerMovement', { x: this.player.x, y: this.player.y }); // Send movement to server
+            } else {
+                this.player.setVelocity(0);
+            }
         });
     }
 
     update() {
+        Object.keys(this.players).forEach((id) => {
+            if (this.players[id]) {
         
         const maxSpeed = 175; // Maximum player speed
         const minSpeed = 0;  // Minimum speed when very close to the mouse
@@ -253,6 +295,8 @@ export class mainMap extends Phaser.Scene {
             bush.healthBar.fillStyle(0x00ff00, 1);
             bush.healthBar.fillRect(bush.x - 20, bush.y - 35, 40 * (bush.currentHp / bush.maxHp), 5);
         });
+    }
+});
     }
     addPlayer(playerInfo) {
         const player = this.physics.add.sprite(playerInfo.x, playerInfo.y, 'player');
@@ -721,21 +765,6 @@ export class mainMap extends Phaser.Scene {
     chasePlayer(player, enemy) {
     }
 }
-
-const config = {
-    type: Phaser.AUTO,
-    width: window.innerWidth,
-    height: window.innerHeight,
-    pixelArt: true, 
-    scene: mainMap, 
-    physics: {
-        default: 'arcade',
-        arcade: {
-            fps: 60,
-            debug: false
-        }
-    }
-};
 
 const game = new Phaser.Game(config);
 
