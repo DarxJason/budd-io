@@ -2,7 +2,6 @@ const socket = io(); // Initialize socket connection
 export class mainMap extends Phaser.Scene {
     constructor() {
         super("mainMap");
-        this.players = {}; // Store all player sprites
     }
 
     preload() {
@@ -21,7 +20,7 @@ export class mainMap extends Phaser.Scene {
         const tiles = map.addTilesetImage('tileset', 'tiles');
         const groundLayer = map.createLayer('Map', tiles, 0, 0);
         const wallLayer = map.createLayer('Walls', tiles, 0, 0);
-
+this.players = {}; // Store all player sprites
         groundLayer.setScale(15);
         wallLayer.setScale(15);
         this.useMouseControl = false;
