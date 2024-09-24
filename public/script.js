@@ -1,10 +1,8 @@
 const socket = io(); // Initialize socket connection
-
 export class mainMap extends Phaser.Scene {
     constructor() {
         super("mainMap");
-        this.players = {}; // Store player sprites
-        this.player; // Reference to local player sprite
+        this.players = {}; // Store all player sprites
     }
 
     preload() {
@@ -48,6 +46,29 @@ export class mainMap extends Phaser.Scene {
             a: Phaser.Input.Keyboard.KeyCodes.A,
             s: Phaser.Input.Keyboard.KeyCodes.S,
             d: Phaser.Input.Keyboard.KeyCodes.D
+        });
+
+         // Listen for server updates
+         socket.on('currentPlayers', (players) => {
+            Object.keys(players).forEach(id => {
+                const playerInfo = players[id];
+                this.addPlayer(playerInfo);
+            });
+        });
+
+        socket.on('newPlayer', (playerInfo) => {
+            this.addPlayer(playerInfo);
+        });
+
+        socket.on('updatePlayers', (players) => {
+            Object.keys(players).forEach(id => {
+                const playerInfo = players[id];
+                this.updatePlayer(playerInfo);
+            });
+        });
+
+        socket.on('playerDisconnected', (playerId) => {
+            this.removePlayer(playerId);
         });
 
         this.cameras.main.startFollow(this.player);
@@ -106,27 +127,6 @@ export class mainMap extends Phaser.Scene {
             callbackScope: this,
             loop: true
         });
-        socket.on('currentPlayers', (players) => {
-            Object.keys(players).forEach(id => {
-                const playerInfo = players[id];
-                this.addPlayer(playerInfo);
-            });
-        });
-
-        socket.on('newPlayer', (playerInfo) => {
-            this.addPlayer(playerInfo);
-        });
-
-        socket.on('updatePlayers', (players) => {
-            Object.keys(players).forEach(id => {
-                const playerInfo = players[id];
-                this.updatePlayer(playerInfo);
-            });
-        });
-
-        socket.on('playerDisconnected', (playerId) => {
-            this.removePlayer(playerId);
-        });
     }
 
     update() {
@@ -138,14 +138,15 @@ export class mainMap extends Phaser.Scene {
             this.useMouseControl = !this.useMouseControl;
         }
     
+        // Prepare player data to send to the server
         const playerData = {
             id: socket.id,
             x: this.player.x,
             y: this.player.y,
-            attacking: false
+            attacking: false // Implement attacking logic as needed
         };
     
-        socket.emit('playerUpdate', playerData);
+        socket.emit('playerUpdate', playerData); // Send the player data to the server every frame
     
         if (this.useMouseControl) {
             const pointer = this.input.activePointer;
@@ -159,6 +160,7 @@ export class mainMap extends Phaser.Scene {
                 if (distance < maxSpeed) {
                     speed = Math.max(minSpeed, distance);
                 }
+    
                 const velocityX = (dx / distance) * speed;
                 const velocityY = (dy / distance) * speed;
                 this.player.setVelocity(velocityX, velocityY);
@@ -168,6 +170,7 @@ export class mainMap extends Phaser.Scene {
     
             this.movementArrow.clear();
             this.movementArrow.fillStyle(0x808080);
+    
             const arrowheadSize = 20;
             const arrowDistanceFromPlayer = 50;
             const arrowheadX = this.player.x + Math.cos(angle) * arrowDistanceFromPlayer;
@@ -181,16 +184,19 @@ export class mainMap extends Phaser.Scene {
             this.movementArrow.fillPath();
         } else {
             this.player.setVelocity(0);
+    
             if (this.keys.w.isDown || this.cursors.up.isDown) {
                 this.player.setVelocityY(-maxSpeed);
             } else if (this.keys.s.isDown || this.cursors.down.isDown) {
                 this.player.setVelocityY(maxSpeed);
             }
+    
             if (this.keys.a.isDown || this.cursors.left.isDown) {
                 this.player.setVelocityX(-maxSpeed);
             } else if (this.keys.d.isDown || this.cursors.right.isDown) {
                 this.player.setVelocityX(maxSpeed);
             }
+    
             this.movementArrow.clear();
         }
     
@@ -226,6 +232,7 @@ export class mainMap extends Phaser.Scene {
             bush.healthBar.fillRect(bush.x - 20, bush.y - 35, 40 * (bush.currentHp / bush.maxHp), 5);
         });
     }
+    
     
 
     spawnBush(x, y, rarity) {
@@ -681,6 +688,7 @@ export class mainMap extends Phaser.Scene {
     chasePlayer(player, enemy) {
     }
 }
+
 const config = {
     type: Phaser.AUTO,
     width: window.innerWidth,
@@ -695,6 +703,8 @@ const config = {
         }
     }
 };
+
 const game = new Phaser.Game(config);
 
 export default mainMap;
+
